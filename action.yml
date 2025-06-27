@@ -1,5 +1,10 @@
-name: install ASDF tools from repo
+name: Install ASDF tools from repo
 description: Install ASDF and tools defined in .tool-versions and .tool-repos if they are present in the repository.
+inputs:
+  exclude_tools:
+    description: 'Comma-separated list of tools to exclude from installation, e.g. "terraform,python"'
+    required: false
+    default: ""
 runs:
   using: "composite"
   steps:
@@ -22,6 +27,23 @@ runs:
     - name: Install ASDF tools
       run: |
         if [ -f .tool-versions ]; then
-          awk -F'[ #]' '$NF ~ /https/ {system("asdf plugin add " $1 " " $NF)} $1 ~ /./ {system("asdf plugin add " $1 "; asdf install " $1 " " $2)}' ./.tool-versions
+          IFS=',' read -ra exclude_items <<< "${{ inputs.exclude_tools }}"
+
+          grep_pattern=""
+          for item in "${exclude_items[@]}"; do
+            # Skip empty items
+            [ -z "$item" ] && continue
+
+            echo "::warning file=.tool-versions,title=Excluded tool::ASDF will skip installing: $item"
+
+            # Add to grep pattern
+            if [ -z "$grep_pattern" ]; then
+              grep_pattern="$item"
+            else
+              grep_pattern="$grep_pattern\|$item"
+            fi
+          done
+
+          grep -v "$grep_pattern" .tool-versions | awk -F'[ #]' '$NF ~ /https/ {system("asdf plugin add " $1 " " $NF)} $1 ~ /./ {system("asdf plugin add " $1 "; asdf install " $1 " " $2)}'
         fi
       shell: bash
